@@ -1,6 +1,7 @@
 
 
 library(shiny)
+library(leaflet)
 
 causelist<-as.character(unique(acc$主要肇因))
 shinyUI(navbarPage("金門縣道路資料查詢及統計",
@@ -45,6 +46,33 @@ shinyUI(navbarPage("金門縣道路資料查詢及統計",
                                          tabPanel("C.時間區間統計：肇事車種",plotOutput("analysiscarplot")),
                                          tabPanel("C.時間區間統計：肇事時段",plotOutput("analysishourplot")),
                                          tabPanel("C.時間區間統計：肇因街道",plotOutput("analysisstreetplot"))
+                            )
+                   ),
+                   tabPanel("新建案位置檢視",
+                            tags$head(
+                              # Include our custom CSS
+                              includeScript("gomap.js")
+                            ),
+                            
+                            leafletOutput("map"),
+                            DT::dataTableOutput(outputId="ziptable")
+                   ),
+                   tabPanel("道路挖掘督導隨機抽選",
+                            titlePanel("道路挖掘督導隨機抽選"),
+                            sliderInput("runcase",
+                                        "隨機抽選案件數",
+                                        min=1,
+                                        max=length(unique(Temp[,1])),
+                                        value=2,
+                                        step=1),
+                            dateInput("checkdate","預定督導日期：",value=Sys.Date()),
+                            print(paste("系統時間：",Sys.Date())),
+                            
+                            navlistPanel("",
+                                         tabPanel("抽選結果表",
+                                                  dataTableOutput("rchecktable"),
+                                                  downloadButton('rcheckdownloadData', '下載抽選結果CSV檔')
+                                                  )
                             )
                    )
 )

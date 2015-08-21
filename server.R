@@ -1,8 +1,10 @@
 
 
 library(shiny)
+library(dplyr)
 library(ggplot2)
 library(ggmap)
+library(leaflet)
 
 thm <- function() {
   theme_gray(base_family = "STHeiti") + # 讓Mac使用者能夠顯示中文, Windows使用者應省略這行
@@ -12,7 +14,7 @@ source("global.R")
   
 g<-ggmap(get_map(location = c(lon = 118.375, lat = 24.445), zoom = 12, maptype = "terrain"))
 
-shinyServer(function(input, output) {
+shinyServer(function(input, output,session) {
 
   output$distPlot <- renderPlot({
 
@@ -24,14 +26,34 @@ shinyServer(function(input, output) {
   output$hoursPlot <- renderPlot({
     
     x<-road[grepl(input$roadname,road$where) & road$deal_d>=input$bins[1] & road$deal_d<=input$bins[2],]
-    ggplot(data=x,aes(x=timelev))+geom_bar()+thm()
+    x<-ddply(x,.(timelev),summarise,times=sum(cout))
+    if (nrow(x) < 4) {
+      if (is.na(match("0ver",x$timelev))) { x <- rbind(x,c("0ver",0)) }
+      if (is.na(match("24hours",x$timelev))) { x <- rbind(x,c("24hours",0)) }
+      if (is.na(match("48hours",x$timelev))) { x <- rbind(x,c("48hours",0)) }
+      if (is.na(match("4hours",x$timelev))) { x <- rbind(x,c("4hours",0)) }
+    }
+    x$times<-as.numeric(x$times)
+    x<-x[order(x$timelev,decreasing = T),]
+    x$times<-round(x$times/sum(x$times,4))*100
+    ggplot(data=x,aes(x=timelev,y=times))+geom_bar(stat="identity")+annotate("text",label=paste(x$times,"%"),x=x$timelev,y=x$times+3)+thm()
     
   })
   
   output$sourcePlot <- renderPlot({
     
     x<-road[grepl(input$roadname,road$where) & road$deal_d>=input$bins[1] & road$deal_d<=input$bins[2],]
-    ggplot(data=x,aes(x=source))+geom_bar()+thm()
+    x<-ddply(x,.(source),summarise,times=sum(cout))
+    if (nrow(x) < 3) {
+      if (is.na(match("自行",x$source))) { x <- rbind(x,c("自行",0)) }
+      if (is.na(match("民眾",x$source))) { x <- rbind(x,c("民眾",0)) }
+      if (is.na(match("其他",x$source))) { x <- rbind(x,c("其他",0)) }
+    }
+    x$times<-as.numeric(x$times)
+    x<-x[order(x$source,decreasing = T),]
+    x$times<-round(x$times/sum(x$times,4))*100
+    ggplot(data=x,aes(x=source,y=times))+geom_bar(stat="identity")+annotate("text",label=paste(x$times,"%"),x=x$source,y=x$times+3)+thm()
+    #ggplot(data=x,aes(x=source))+geom_bar()+thm()
     
   })
   
@@ -141,5 +163,49 @@ shinyServer(function(input, output) {
     ggplot(x_road,aes(x=街道))+geom_bar()+thm()+theme(axis.text.x = element_text(angle=90, colour="black"))
     
   })
+  
+  ####建案####
+  output$map<-renderLeaflet({
+    maps<-leaflet() %>%
+      addTiles() %>% 
+      addMarkers(lng=building$lon,lat=building$lat,popup=paste("建號：",building$建照號)) %>%
+      setView(lng=118.375,lat=24.445,zoom=12)
+  })
+  
+  observe({
+    if (is.null(input$goto))
+      return()
+    isolate({
+      map <- leafletProxy("map")
+      #map %>% clearPopups()
+      dist <- 0.0015
+      lat <- input$goto$lat
+      lng <- input$goto$lon
+      map %>% fitBounds(lng - dist, lat - dist, lng + dist, lat + dist)
+    })
+  })
+  output$ziptable <- DT::renderDataTable({
+    temp<-building[order(building$發文日期,decreasing=T),c(3,5,6,7,9,10)]
+    ztable <- temp %>%
+      mutate(Action = paste('<a class="go-map" href="" data-lat="', lat, '" data-long="', lon, '">location</a>', sep=""))
+    action <- DT::dataTableAjax(session, ztable)
+    
+    DT::datatable(ztable, options = list(ajax = list(url = action)),escape = FALSE)
+  })
+  
+  ####挖掘隨機抽案####
+  output$rchecktable <- renderDataTable({
+    
+    #隨機挑選案號
+    rcase<<-Temp[sample(seq(1,nrow(Temp),1),input$runcase),]
+    
+  })
+  
+  output$rcheckdownloadData <- downloadHandler(
+    filename = function() { paste('RandomCheck_',input$checkdate,'.csv',sep="")},
+    content = function(file) {
+      write.csv(rcase, file,row.names=FALSE,fileEncoding = "big5")
+    }
+  )
 
 })

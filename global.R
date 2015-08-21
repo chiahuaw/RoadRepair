@@ -1,5 +1,7 @@
 library(dplyr)
 library(plyr)
+library(XML)
+library(RCurl)
 
 # from:http://shiny.rstudio.com/gallery/unicode-characters.html
 # Cairo包的PNG设备似乎无法显示中文字符，强制使用R自身的png()设备
@@ -58,3 +60,49 @@ f<-file("data/form_all.csv",encoding="big5")
 acc<-read.csv(f,stringsAsFactors = F)
 f2<-file("data/form2orig.csv",encoding="big5")
 acc2<-read.csv(f,stringsAsFactors = F)
+
+####建案資料####
+f3 <- file("data/buildingGeo.csv",encoding="big5")
+building <- read.csv(f3,encoding="big5",stringsAsFactors=F)
+#building <-mutate(building,發文日期=as.Date(發文日期)) %>% arrange(.,desc(發文日期))
+
+####道路挖掘督導抽選####
+url <-'http://pipe.kinmen.gov.tw/kinmen/Civilian/LocationQuery.aspx'
+url_list <- unlist(url) #去格式化
+
+##Get the table online
+#核心程式
+myTemp <- function(url){
+  #抓取url
+  get_url = getURL(url,encoding = "UTF-8")
+  #將url解析
+  get_url_parse = htmlParse(get_url, encoding = "UTF-8")
+  #抓取關鍵的變項，我們需要的變項夾在一個div的class=tqtongji2，裡面<ul>中的<li>標籤裡面
+  #標籤裡面還有一些沒有用到的東西沒關係，事後再一併移除
+  tablehead <- xpathSApply(get_url_parse, "//table[@class='TurnInTable']/tr/td", xmlValue)
+  #將擷取到的關鍵字轉成容易閱讀的矩陣格式
+  table <- matrix(tablehead, ncol = 8, byrow = TRUE)
+  #回傳值
+  return(table)
+}
+
+Temp_Total <- lapply(url_list, myTemp)
+
+#清理資料
+
+rcheck<-as.data.frame(Temp_Total,stringsAsFactors = F)
+rcheck2<-list()
+
+for (i in 1:nrow(rcheck)) {
+  for ( t in 1:ncol(rcheck)) {
+    rcheck[i,t]<-gsub("\r\n","",rcheck[i,t])
+    rcheck[i,t]<-gsub("\\s","",rcheck[i,t])
+    rcheck2<-rbind(rcheck2,rcheck[i,t])
+  }
+}
+rcheck2<-unlist(rcheck2)
+Temp <- matrix(ncol =8,nrow=length(rcheck2)/8)
+Temp<-matrix(rcheck2,ncol=8,byrow=T)
+Temp<-as.data.frame(Temp,stringsAsFactors = F)
+
+colnames(Temp)<-c("CaseNumber","Date","Time","Applicant","Contract","Township","Roads","Note")
